@@ -27,21 +27,21 @@ public:
 	~EuropeanOption() {
 		std::cout << "Running my destructor..." << std::endl;
 	}
-	void CallPricer_BSE();
-	void CallPricer_BM();
-	void CallPricer_FD(const char *Switch);
+	void CallPricer_BSE(const char *callput);
+	void CallPricer_BM(const char *callput, const int &gridcount);
+	void CallPricer_FD(const char *callput, const char *fdType, const int &timegridcnt, const int &stockgridcnt, const int &upperMultiple);
 
 };
 
 
 template <class T>
-void EuropeanOption<T>::CallPricer_FD(const char *Switch) {
+void EuropeanOption<T>::CallPricer_FD(const char *callput, const char *fdType, const int &timegridcnt, const int &stockgridcnt, const int &upperMultiple) {
 
-	std::cout << "Running '" << Switch << "' finite difference call pricer..." << std::endl;
+	std::cout << "Running '" << fdType << "' finite difference call pricer..." << std::endl;
 
-	int timegridcnt = 10;
-	int stockgridcnt = 10;
-	int upperMultiple = 3;
+	//int timegridcnt = 10;
+	//int stockgridcnt = 10;
+	//int upperMultiple = 3;
 
 	float dt = T_ / timegridcnt;
 	float ds = S_ * upperMultiple / stockgridcnt;
@@ -54,7 +54,7 @@ void EuropeanOption<T>::CallPricer_FD(const char *Switch) {
 	Eigen::MatrixXd F(stockgridcnt, timegridcnt);
 	Eigen::Array3d ABlock;
 
-	if (strcmp(Switch, "explicit") == 0) {
+	if (strcmp(fdType, "explicit") == 0) {
 		//This sets up the tridiagonal A matrix to solve the FD equation under Explicit FD method
 		for (int i = 0;i < stockgridcnt;i++) {
 
@@ -86,7 +86,12 @@ void EuropeanOption<T>::CallPricer_FD(const char *Switch) {
 			//First pass sets up payout vector at expiration of option
 			if (i == timegridcnt - 1) {
 				for (int ia = 0;ia < stockgridcnt;ia++) {
-					F.col(i)[ia] = std::max((ia + 1)*ds - K_, 0.0f);
+					if (strcmp(callput, "call") == 0) {
+						F.col(i)[ia] = std::max((ia + 1)*ds - K_, 0.0f);
+					}
+					else if (strcmp(callput, "put") == 0) {
+						F.col(i)[ia] = std::max(K_ - (ia + 1)*ds, 0.0f);
+					}
 				}
 				std::cout << "F(" << i << "): " << std::endl << F << std::endl;
 			}
@@ -103,7 +108,7 @@ void EuropeanOption<T>::CallPricer_FD(const char *Switch) {
 
 		}
 	}
-	else if (strcmp(Switch, "implicit") == 0) {
+	else if (strcmp(fdType, "implicit") == 0) {
 
 		Eigen::MatrixXd tempM(stockgridcnt, 1);
 
@@ -138,9 +143,14 @@ void EuropeanOption<T>::CallPricer_FD(const char *Switch) {
 			//First pass sets up payout vector at expiration of option
 			if (i == timegridcnt - 1) {
 				for (int ia = 0;ia < stockgridcnt;ia++) {
-					F.col(i)[ia] = std::max((ia + 1)*ds - K_, 0.0f);
-					std::cout << "F(" << i << "): " << std::endl << F << std::endl;
+					if (strcmp(callput, "call") == 0) {
+						F.col(i)[ia] = std::max((ia + 1)*ds - K_, 0.0f);
+					}
+					else if (strcmp(callput, "put") == 0) {
+						F.col(i)[ia] = std::max(K_ - (ia + 1)*ds, 0.0f);
+					}
 				}
+				std::cout << "F(" << i << "): " << std::endl << F << std::endl;
 			}
 			//Iterates through time points using Implicit FD formula: F(i) = A^(-1)*[F(i+1) + K(i)]
 			else {
@@ -156,7 +166,7 @@ void EuropeanOption<T>::CallPricer_FD(const char *Switch) {
 
 		}
 	}
-	else if (strcmp(Switch, "crank-nicolson") == 0) {
+	else if (strcmp(fdType, "crank-nicolson") == 0) {
 
 		Eigen::MatrixXd tempM(stockgridcnt, 1);
 		Eigen::MatrixXd B(stockgridcnt, stockgridcnt);
@@ -213,7 +223,12 @@ void EuropeanOption<T>::CallPricer_FD(const char *Switch) {
 			//First pass sets up payout vector at expiration of option
 			if (i == timegridcnt - 1) {
 				for (int ia = 0;ia < stockgridcnt;ia++) {
-					F.col(i)[ia] = std::max((ia + 1)*ds - K_, 0.0f);
+					if (strcmp(callput, "call") == 0) {
+						F.col(i)[ia] = std::max((ia + 1)*ds - K_, 0.0f);
+					}
+					else if (strcmp(callput, "put") == 0) {
+						F.col(i)[ia] = std::max(K_ - (ia + 1)*ds, 0.0f);
+					}
 				}
 				std::cout << "F(" << i << "): " << std::endl << F << std::endl;
 			}
@@ -240,14 +255,14 @@ void EuropeanOption<T>::CallPricer_FD(const char *Switch) {
 
 
 template <class T>
-void EuropeanOption<T>::CallPricer_BM() {
-	std::cout << "Running Cox-Ross-Rubinstein Binomial Model call pricer..." << std::endl;
+void EuropeanOption<T>::CallPricer_BM(const char *callput, const int &gridcount) {
+	std::cout << "Running Cox-Ross-Rubinstein Binomial Model '" << callput << "' pricer..." << std::endl;
 
 	std::vector<std::vector<float>> stock_matrix;
 	std::vector<std::vector<float>> price_matrix;
 	std::vector<float> temp_vec;
 
-	int gridcount = 50;
+	//int gridcount = 50;
 	float u, q;
 	u = exp(sig_*pow(T_ / gridcount, 0.5));
 	q = (exp(r_*T_ / gridcount) - (1 / u)) / (u - 1 / u);
@@ -260,12 +275,17 @@ void EuropeanOption<T>::CallPricer_BM() {
 			stock_matrix[ia][ib] = S_ * pow(u, price_matrix[ia].size() - ib) / pow(u, ib);
 			std::cout << "stock price [" << ia << "][" << ib << "]: " << stock_matrix[ia][ib] << std::endl;
 			if (ia == 0) {
-				price_matrix[ia][ib] = std::max(stock_matrix[ia][ib] - K_, 0.0f);
-				std::cout << "call price [" << ia << "][" << ib << "]: " << price_matrix[ia][ib] << std::endl;
+				if (strcmp(callput, "call") == 0) {
+					price_matrix[ia][ib] = std::max(stock_matrix[ia][ib] - K_, 0.0f);
+				}
+				else if (strcmp(callput, "put") == 0) {
+					price_matrix[ia][ib] = std::max(K_ - stock_matrix[ia][ib], 0.0f);
+				}
+				std::cout << "'" << callput << "' price [" << ia << "][" << ib << "]: " << price_matrix[ia][ib] << std::endl;
 			}
 			else {
 				price_matrix[ia][ib] = price_matrix[ia - 1][ib] * q + price_matrix[ia - 1][ib + 1] * (1 - q);
-				std::cout << "call price: [" << ia << "][" << ib << "]: " << price_matrix[ia][ib] << std::endl;
+				std::cout << "'" << callput << "' price: [" << ia << "][" << ib << "]: " << price_matrix[ia][ib] << std::endl;
 			}
 		}
 	}
@@ -273,14 +293,13 @@ void EuropeanOption<T>::CallPricer_BM() {
 }
 
 template <class T>
-void EuropeanOption<T>::CallPricer_BSE() {
-	std::cout << "Running BSE call pricer..." << std::endl;
+void EuropeanOption<T>::CallPricer_BSE(const char *callput) {
+	std::cout << "Running BSE '" << callput << "' pricer..." << std::endl;
 	normal sn(0, 1);
 
 	float d1 = (log(S_ / K_) + (r_ + 0.5*pow(sig_, 2)*T_)) / (sig_*pow(T_, 0.5));
 	float d2 = d1 - sig_ * pow(T_, 0.5);
 	float  thisprice;
-	std::vector<float> result;
 
 	std::cout << "S: " << S_ << std::endl;
 	std::cout << "K: " << K_ << std::endl;
@@ -292,9 +311,13 @@ void EuropeanOption<T>::CallPricer_BSE() {
 	std::cout << "cdf(d1): " << cdf(sn, d1) << std::endl;
 	std::cout << "cdf(d2): " << cdf(sn, d2) << std::endl;
 
-	thisprice = S_ * cdf(sn, d1) - K_ * exp(-r_ * T_)*cdf(sn, d2);
-	std::cout << "BSE call price: " << thisprice << std::endl;
-	result.push_back(thisprice);
+	if (strcmp(callput, "call")) {
+		thisprice = S_ * cdf(sn, d1) - K_ * exp(-r_ * T_)*cdf(sn, d2);
+	}
+	else if (strcmp(callput, "put")) {
+		thisprice = K_ * exp(-r_ * T_)*cdf(sn, -d2) - S_ * cdf(sn, -d1);
+	}
+	std::cout << "BSE '" << callput << "' price: " << thisprice << std::endl;
 
 }
 
@@ -306,11 +329,16 @@ int main() {
 
 	EuropeanOption<float> t1(100, 95, 0.02, 0.2, 1);
 
-	t1.CallPricer_FD("explicit");
-	t1.CallPricer_FD("implicit");
-	t1.CallPricer_FD("crank-nicolson");
-	t1.CallPricer_BM();
-	t1.CallPricer_BSE();
+	t1.CallPricer_FD("call", "explicit", 10, 10, 3);
+	t1.CallPricer_FD("put", "explicit", 10, 10, 3);
+	t1.CallPricer_FD("call", "implicit", 10, 10, 3);
+	t1.CallPricer_FD("put", "implicit", 10, 10, 3);
+	t1.CallPricer_FD("call", "crank-nicolson", 10, 10, 3);
+	t1.CallPricer_FD("put", "crank-nicolson", 10, 10, 3);
+	t1.CallPricer_BM("call", 50);
+	t1.CallPricer_BM("put", 50);
+	t1.CallPricer_BSE("call");
+	t1.CallPricer_BSE("put");
 
 
 	Eigen::MatrixXd AMat(5, 5);
