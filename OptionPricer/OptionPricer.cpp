@@ -6,6 +6,7 @@
 #include<boost/math/distributions/normal.hpp>
 #include<Eigen/Dense>
 #include<Eigen/Sparse>
+#include<string>
 using boost::math::normal;
 
 template <class T>
@@ -28,14 +29,15 @@ public:
 	}
 	void CallPricer_BSE();
 	void CallPricer_BM();
-	void CallPricer_FD();
+	void CallPricer_FD(const char *Switch);
 
 };
 
 
 template <class T>
-void EuropeanOption<T>::CallPricer_FD() {
-	std::cout << "Running finite difference call pricer..." << std::endl;
+void EuropeanOption<T>::CallPricer_FD(const char *Switch) {
+
+	std::cout << "Running '" << Switch << "' finite difference call pricer..." << std::endl;
 
 	int timegridcnt = 10;
 	int stockgridcnt = 10;
@@ -43,58 +45,199 @@ void EuropeanOption<T>::CallPricer_FD() {
 
 	float dt = T_ / timegridcnt;
 	float ds = S_ * upperMultiple / stockgridcnt;
-	float upperPayoff = max(S_*upperMultiple - K_,0), lowerPayoff = 0;
+	float upperPayoff = std::max(S_*upperMultiple - K_, 0.0f), lowerPayoff = 0;
+
 
 	Eigen::MatrixXd A(stockgridcnt, stockgridcnt);
+	A = Eigen::MatrixXd::Zero(stockgridcnt, stockgridcnt);
 	Eigen::MatrixXd K(stockgridcnt, 1);
 	Eigen::MatrixXd F(stockgridcnt, timegridcnt);
-	Eigen::MatrixXd FSolve(stockgridcnt, 1);
 	Eigen::Array3d ABlock;
 
-	//This sets up the A matrix to solve the FD equation
-	for (int i=0;i<A.rows();i++) {
+	if (strcmp(Switch, "explicit") == 0) {
+		//This sets up the tridiagonal A matrix to solve the FD equation under Explicit FD method
+		for (int i = 0;i < stockgridcnt;i++) {
 
-		ABlock[0] = 0.5*dt*(pow(sig_, 2)*pow(i+1, 2) - r_ * (i+1));
-		ABlock[1] = 1 - dt * (pow(sig_, 2)*pow(i+1, 2) + r_);
-		ABlock[2] = 0.5*dt*(pow(sig_, 2)*pow(i+1, 2) + r_ * (i+1));
+			ABlock[0] = 0.5*dt*(pow(sig_, 2)*pow(i + 1, 2) - r_ * (i + 1));
+			ABlock[1] = 1 - dt * (pow(sig_, 2)*pow(i + 1, 2) + r_);
+			ABlock[2] = 0.5*dt*(pow(sig_, 2)*pow(i + 1, 2) + r_ * (i + 1));
 
-		std::cout << "aBlock: " << std::endl << ABlock << std::endl;
-		std::cout << "Head<2> aBlock: " << std::endl << ABlock.head<2>() << std::endl;
-		std::cout << "Tail<2> aBlock: " << std::endl << ABlock.tail<2>() << std::endl;
+			std::cout << "aBlock: " << std::endl << ABlock << std::endl;
+			std::cout << "Head<2> aBlock: " << std::endl << ABlock.head<2>() << std::endl;
+			std::cout << "Tail<2> aBlock: " << std::endl << ABlock.tail<2>() << std::endl;
 
-		if (i == 0) {
-			A.block(0, 0, 1, 2) = ABlock.tail<2>().transpose();
-			std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
+			if (i == 0) {
+				A.block(0, 0, 1, 2) = ABlock.tail<2>().transpose();
+				std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
+			}
+			else if (i == A.rows() - 1) {
+				A.block(i, i - 1, 1, 2) = ABlock.head<2>().transpose();
+				std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
+			}
+			else {
+
+				A.block(i, i - 1, 1, 3) = ABlock.transpose();
+				std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
+
+			}
 		}
-		else if (i == A.rows()-1) {
-			A.block(i - 1, i - 2, 1, 2) = ABlock.head<2>().transpose();
-			std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
-		}
-		else {
 
-			A.block(i - 1, i - 2, 1, 3) = ABlock.transpose();
-
-			std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
+		for (int i = timegridcnt - 1;i >= 0;i--) {
+			//First pass sets up payout vector at expiration of option
+			if (i == timegridcnt - 1) {
+				for (int ia = 0;ia < stockgridcnt;ia++) {
+					F.col(i)[ia] = std::max((ia + 1)*ds - K_, 0.0f);
+				}
+				std::cout << "F(" << i << "): " << std::endl << F << std::endl;
+			}
+			//Iterates through time points using Explicit FD formula: F(i-1) = A*F(i) + K(i)
+			else {
+				std::cout << "F.col(" << i + 1 << "): " << std::endl << F.col(i + 1) << std::endl;
+				std::cout << "A: " << std::endl << A << std::endl;
+				F.col(i) = A * F.col(i + 1);
+				std::cout << "F.col(" << i << "): " << std::endl << F.col(i) << std::endl;
+				F(0, i) = F(0, i) + 0.5*dt*(pow(sig_, 2) - r_)*lowerPayoff;
+				F(stockgridcnt - 1, i) = F(stockgridcnt - 1, i) + 0.5*dt*(pow(sig_, 2)*pow((stockgridcnt - 1), 2) + r_ * (stockgridcnt - 1))*upperPayoff;
+				std::cout << "F(" << i << "): " << std::endl << F << std::endl;
+			}
 
 		}
 	}
+	else if (strcmp(Switch, "implicit") == 0) {
 
-	for (int i=0;i<timegridcnt;i++) {
-		if (i == 0) {
-			F.col(i) = 0;
+		Eigen::MatrixXd tempM(stockgridcnt, 1);
+
+		//This sets up the tridiagonal A matrix to solve the FD equation under Implicit FD method
+		for (int i = 0;i < stockgridcnt;i++) {
+
+			ABlock[0] = 0.5*dt*(-pow(sig_, 2)*pow(i + 1, 2) + r_ * (i + 1));
+			ABlock[1] = 1 + dt * (pow(sig_, 2)*pow(i + 1, 2) + r_);
+			ABlock[2] = 0.5*dt*(-pow(sig_, 2)*pow(i + 1, 2) - r_ * (i + 1));
+
+			std::cout << "aBlock: " << std::endl << ABlock << std::endl;
+			std::cout << "Head<2> aBlock: " << std::endl << ABlock.head<2>() << std::endl;
+			std::cout << "Tail<2> aBlock: " << std::endl << ABlock.tail<2>() << std::endl;
+
+			if (i == 0) {
+				A.block(0, 0, 1, 2) = ABlock.tail<2>().transpose();
+				std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
+			}
+			else if (i == A.rows() - 1) {
+				A.block(i, i - 1, 1, 2) = ABlock.head<2>().transpose();
+				std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
+			}
+			else {
+
+				A.block(i, i - 1, 1, 3) = ABlock.transpose();
+				std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
+
+			}
 		}
-		else {
-			FSolve = A * F.col(i - 1);
-			F.block(0, i, 1, 1) = F.block(0, i, 1, 1) + 0.5*dt*(pow(sig_, 2) - r_)*upperPayoff;
-			F.block(F.rows()-1, i, 1, 1) = F.block(F.rows()-1, i, 1, 1) + 0.5*dt*(pow(sig_, 2)*pow((F.rows()-1), 2) + r_ * (F.rows()-1))*lowerPayoff;
+
+		for (int i = timegridcnt - 1; i >= 0; i--) {
+			//First pass sets up payout vector at expiration of option
+			if (i == timegridcnt - 1) {
+				for (int ia = 0;ia < stockgridcnt;ia++) {
+					F.col(i)[ia] = std::max((ia + 1)*ds - K_, 0.0f);
+					std::cout << "F(" << i << "): " << std::endl << F << std::endl;
+				}
+			}
+			//Iterates through time points using Implicit FD formula: F(i) = A^(-1)*[F(i+1) + K(i)]
+			else {
+				std::cout << "F.col(" << i + 1 << "): " << std::endl << F.col(i + 1) << std::endl;
+				std::cout << "A: " << std::endl << A << std::endl;
+				tempM = F.col(i + 1);
+				tempM(0) = F(0, i + 1) - 0.5*dt*(-pow(sig_, 2) + r_)*lowerPayoff;
+				tempM(stockgridcnt - 1) = F(stockgridcnt - 1, i + 1) - 0.5*dt*(-pow(sig_, 2)*pow((stockgridcnt - 1), 2) - r_ * (stockgridcnt - 1))*upperPayoff;
+				F.col(i) = A.inverse()*tempM;
+				std::cout << "F(" << i << "): " << std::endl << F << std::endl;
+
+			}
+
+		}
+	}
+	else if (strcmp(Switch, "crank-nicolson") == 0) {
+
+		Eigen::MatrixXd tempM(stockgridcnt, 1);
+		Eigen::MatrixXd B(stockgridcnt, stockgridcnt);
+		B = Eigen::MatrixXd::Zero(stockgridcnt, stockgridcnt);
+		Eigen::Array3d BBlock;
+
+		std::cout << B << std::endl;
+
+		//This sets up the tridiagonal A matrix to solve the FD equation under Crank-Nicolson method
+		for (int i = 0;i < A.rows();i++) {
+
+			ABlock[0] = -0.25*dt*(pow(sig_, 2)*pow(i + 1, 2) - r_ * (i + 1));
+			ABlock[1] = 1 + 0.5*dt * (pow(sig_, 2)*pow(i + 1, 2) + r_);
+			ABlock[2] = -0.25*dt*(pow(sig_, 2)*pow(i + 1, 2) + r_ * (i + 1));
+
+			std::cout << "aBlock: " << std::endl << ABlock << std::endl;
+			std::cout << "Head<2> aBlock: " << std::endl << ABlock.head<2>() << std::endl;
+			std::cout << "Tail<2> aBlock: " << std::endl << ABlock.tail<2>() << std::endl;
+
+			BBlock[0] = 0.25*dt*(pow(sig_, 2)*pow(i + 1, 2) - r_ * (i + 1));
+			BBlock[1] = 1 - 0.5*dt * (pow(sig_, 2)*pow(i + 1, 2) + r_);
+			BBlock[2] = 0.25*dt*(pow(sig_, 2)*pow(i + 1, 2) + r_ * (i + 1));
+
+			std::cout << "bBlock: " << std::endl << BBlock << std::endl;
+			std::cout << "Head<2> bBlock: " << std::endl << BBlock.head<2>() << std::endl;
+			std::cout << "Tail<2> bBlock: " << std::endl << BBlock.tail<2>() << std::endl;
+
+			if (i == 0) {
+				A.block(0, 0, 1, 2) = ABlock.tail<2>().transpose();
+				std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
+
+				B.block(0, 0, 1, 2) = BBlock.tail<2>().transpose();
+				std::cout << "i " << i << std::endl << "B: " << std::endl << B << std::endl;
+			}
+			else if (i == stockgridcnt - 1) {
+				A.block(i, i - 1, 1, 2) = ABlock.head<2>().transpose();
+				std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
+
+				B.block(i, i - 1, 1, 2) = BBlock.head<2>().transpose();
+				std::cout << "i " << i << std::endl << "B: " << std::endl << B << std::endl;
+			}
+			else {
+
+				A.block(i, i - 1, 1, 3) = ABlock.transpose();
+				std::cout << "i " << i << std::endl << "A: " << std::endl << A << std::endl;
+
+				B.block(i, i - 1, 1, 3) = BBlock.transpose();
+				std::cout << "i " << i << std::endl << "B: " << std::endl << B << std::endl;
+
+			}
+		}
+
+		for (int i = timegridcnt - 1;i >= 0;i--) {
+			//First pass sets up payout vector at expiration of option
+			if (i == timegridcnt - 1) {
+				for (int ia = 0;ia < stockgridcnt;ia++) {
+					F.col(i)[ia] = std::max((ia + 1)*ds - K_, 0.0f);
+				}
+				std::cout << "F(" << i << "): " << std::endl << F << std::endl;
+			}
+			//Iterates through time points using Implicit FD formula: F(i) = A^(-1)*[F(i+1) + K(i)]
+			else {
+				std::cout << "F.col(" << i + 1 << "): " << std::endl << F.col(i + 1) << std::endl;
+				std::cout << "A: " << std::endl << A << std::endl;
+				std::cout << "B: " << std::endl << B << std::endl;
+				tempM = B * F.col(i + 1);
+				//std::cout << "tempM: " << std::endl << tempM << std::endl;
+				tempM(0) = F(0, i + 1) + 2 * 0.25*dt*(pow(sig_, 2) - r_)*lowerPayoff;
+				//std::cout << "tempM: " << std::endl << tempM << std::endl;
+				tempM(stockgridcnt - 1) = F(stockgridcnt - 1, i + 1) + 2 * 0.25*dt*(pow(sig_, 2)*pow((stockgridcnt - 1), 2) + r_ * (stockgridcnt - 1))*upperPayoff;
+				//std::cout << "tempM: " << std::endl << tempM << std::endl;
+				F.col(i) = A.inverse()*tempM;
+				std::cout << "F(" << i << "): " << std::endl << F << std::endl;
+
+			}
+
 		}
 
 	}
-
-
-
-
 }
+
 
 template <class T>
 void EuropeanOption<T>::CallPricer_BM() {
@@ -161,6 +304,14 @@ int main() {
 
 	//std::vector<double> K{ 75, 95, 100, 105, 125 };
 
+	EuropeanOption<float> t1(100, 95, 0.02, 0.2, 1);
+
+	t1.CallPricer_FD("explicit");
+	t1.CallPricer_FD("implicit");
+	t1.CallPricer_FD("crank-nicolson");
+	t1.CallPricer_BM();
+	t1.CallPricer_BSE();
+
 
 	Eigen::MatrixXd AMat(5, 5);
 	Eigen::Array3d aBlock;
@@ -170,7 +321,7 @@ int main() {
 	float dt = 0.1;
 
 	for (int ia = 1;ia <= AMat.rows();ia++) {
-		
+
 		aBlock[0] = 0.5*dt*(pow(sig, 2)*pow(ia, 2) - r * ia);
 		aBlock[1] = 1 - dt * (pow(sig, 2)*pow(ia, 2) + r);
 		aBlock[2] = 0.5*dt*(pow(sig, 2)*pow(ia, 2) + r * ia);
@@ -180,16 +331,16 @@ int main() {
 		std::cout << "Tail<2> aBlock: " << std::endl << aBlock.tail<2>() << std::endl;
 
 		if (ia == 1) {
-			AMat.block(0,0,1,2) = aBlock.tail<2>().transpose();
+			AMat.block(0, 0, 1, 2) = aBlock.tail<2>().transpose();
 			std::cout << "ia " << ia << std::endl << "AMat: " << std::endl << AMat << std::endl;
 		}
 		else if (ia == AMat.rows()) {
-			AMat.block(ia-1, ia-2,1,2) = aBlock.head<2>().transpose();
+			AMat.block(ia - 1, ia - 2, 1, 2) = aBlock.head<2>().transpose();
 			std::cout << "ia " << ia << std::endl << "AMat: " << std::endl << AMat << std::endl;
 		}
 		else {
 
-			AMat.block(ia-1, ia-2, 1, 3) = aBlock.transpose();
+			AMat.block(ia - 1, ia - 2, 1, 3) = aBlock.transpose();
 
 			std::cout << "ia " << ia << std::endl << "AMat: " << std::endl << AMat << std::endl;
 
@@ -210,7 +361,7 @@ int main() {
 		7, 8, 9;
 
 	d2 << 1, 1, 1,
-		1, 1, 1,	
+		1, 1, 1,
 		1, 1, 1;
 
 	std::cout << d1.col(0) << std::endl;
@@ -233,10 +384,7 @@ int main() {
 
 	std::cout << d1.size() << std::endl;
 
-	EuropeanOption<float> t1(100, 95, 0.02, 0.2, 1);
 
-	t1.CallPricer_BM();
-	t1.CallPricer_BSE();
 
 	//vector<double> call = BSE(S, K, r, sig, T);
 	//for (auto it = call.begin(); it != call.end(); it++) {
