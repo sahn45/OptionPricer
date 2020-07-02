@@ -45,7 +45,7 @@ public:
 template <class T>
 void LMM<T>::LMM_calibrate() {
 	
-	Eigen::MatrixXd kappaLamda(5, 5);
+	//Eigen::MatrixXd kappaLamda(5, 5);
 	//kappaLamda.Ones();
 	//Eigen::ArrayXd tau(term_.size());
 	float zeta;
