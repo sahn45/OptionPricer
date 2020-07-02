@@ -39,21 +39,8 @@ public:
 
 	void LMM_calibrate();
 	void LMM_runMonteCarlo();
-	
+
 };
 
-template <class T>
-void LMM<T>::LMM_calibrate() {
-	
-	//Eigen::MatrixXd kappaLamda(5, 5);
-	//kappaLamda.Ones();
-	//Eigen::ArrayXd tau(term_.size());
-	float zeta;
 
-	//tau(0) = term_(0);
-	//tau.tail(term_.size()-1) = term_.tail(term_.size() - 1) - term_.head(term_.size() - 1);
-	//sigCapFloor_*sigCapFloor_;//*kappaLamda*tau;*exp(kappaLamda*tau)*tau;
-
-
-}
 
